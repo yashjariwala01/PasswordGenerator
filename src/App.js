@@ -1,101 +1,131 @@
-// import React from 'react'
-// import { Routes, Route} from 'react-router-dom';
-// import HomePage from './components/HomePage';
-// import CourseDetailsPage from './components/CourseDetailsPage';
-// import NavBar from './components/Navbar';
-// import StudentProfile from './components/StudentProfile';
+import React, { useState, useEffect, useRef } from 'react';
 
+const AudioPlayer = () => {
+  const [audioFiles, setAudioFiles] = useState([]);
+  const [currentTrack, setCurrentTrack] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef();
 
-// const App = () => {
-//   return (
-//     <div>
-//       <NavBar/>
-//       <Routes>
-//         <Route path='/' element={<HomePage/>}/>
-//         <Route path='/item/:id' element={<CourseDetailsPage/>}/>
-//         <Route path='/studentprofile' element={<StudentProfile/>}/>
-//       </Routes>
-//     </div>
-//   )
-// }
+  useEffect(() => {
+    const savedAudioFiles = JSON.parse(localStorage.getItem('audioFiles'));
+    if (savedAudioFiles) {
+      setAudioFiles(savedAudioFiles);
+    }
 
-// export default App
+    const savedCurrentTrackId = localStorage.getItem('currentTrackId');
+    const savedCurrentTime = parseFloat(localStorage.getItem('currentTime'));
+    if (savedCurrentTrackId) {
+      const track = audioFiles.find(track => track.id === parseInt(savedCurrentTrackId));
+      if (track) {
+        setCurrentTrack(track);
+        setCurrentTime(savedCurrentTime);
+        setIsPlaying(true);
+      }
+    }
+  }, []);
 
+  useEffect(() => {
+    const saveCurrentTime = () => {
+      if (audioRef.current) {
+        localStorage.setItem('currentTime', audioRef.current.currentTime);
+      }
+    };
 
-import React, { useState } from 'react';
+    window.addEventListener('beforeunload', saveCurrentTime);
 
-function generatePassword(length, useUppercase, useLowercase, useDigits, useSpecial) {
-  let characters = '';
-  if (useUppercase) characters += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  if (useLowercase) characters += 'abcdefghijklmnopqrstuvwxyz';
-  if (useDigits) characters += '0123456789';
-  if (useSpecial) characters += '!@#$%^&*()_+{}:"<>?|[];\',./`~';
-  
-  let password = '';
-  for (let i = 0; i < length; i++) {
-    password += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  return password;
-}
+    return () => {
+      window.removeEventListener('beforeunload', saveCurrentTime);
+    };
+  }, []);
 
-function PasswordGenerator() {
-  const [length, setLength] = useState(12);
-  const [useUppercase, setUseUppercase] = useState(true);
-  const [useLowercase, setUseLowercase] = useState(true);
-  const [useDigits, setUseDigits] = useState(true);
-  const [useSpecial, setUseSpecial] = useState(false);
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  const handleGeneratePassword = () => {
-    if (length < 1) {
-      setError('Password length must be at least 1.');
+    if (!file.type.startsWith('audio/')) {
+      alert('Please upload an audio file.');
       return;
     }
-    const newPassword = generatePassword(length, useUppercase, useLowercase, useDigits, useSpecial);
-    setPassword(newPassword);
-    setError('');
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const audioDataUrl = event.target.result;
+      const newAudioFile = {
+        id: Date.now(),
+        name: file.name,
+        dataUrl: audioDataUrl,
+      };
+      setAudioFiles([...audioFiles, newAudioFile]);
+      localStorage.setItem('audioFiles', JSON.stringify([...audioFiles, newAudioFile]));
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleCopyPassword = () => {
-    const textarea = document.createElement('textarea');
-    textarea.value = password;
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textarea);
-    alert('Password copied to clipboard!');
+  const handlePlay = (track) => {
+    setCurrentTrack(track);
+    const savedTime = parseFloat(localStorage.getItem('currentTime'));
+    if (savedTime && currentTrack && currentTrack.id === track.id) {
+      audioRef.current.currentTime = savedTime;
+    }
+    setIsPlaying(true);
+    localStorage.setItem('currentTrackId', track.id);
+  };
+
+  const handleTimeUpdate = () => {
+    setCurrentTime(audioRef.current.currentTime);
+  };
+
+  const handleTrackEnd = () => {
+    const currentIndex = audioFiles.findIndex(track => track.id === currentTrack.id);
+    if (currentIndex !== -1 && currentIndex < audioFiles.length - 1) {
+      setCurrentTrack(audioFiles[currentIndex + 1]);
+      localStorage.setItem('currentTrackId', audioFiles[currentIndex + 1].id);
+      audioRef.current.currentTime = 0;
+      setIsPlaying(true);
+    }
   };
 
   return (
-    <div className="container mx-auto max-w-lg p-8 bg-gray-100 rounded-lg shadow-lg">
-      <h1 className="text-3xl font-bold text-center mb-8">Password Generator</h1>
-      <div className="mb-4">
-        <label className="block mb-2">Password Length:</label>
-        <input type="number" value={length} onChange={e => setLength(parseInt(e.target.value))} className="w-full border border-gray-400 rounded-md py-2 px-3 focus:outline-none focus:border-blue-500" />
+    <div className="flex justify-center items-center h-screen bg-gray-200">
+      <div className="container mx-auto p-4 bg-white rounded-lg shadow-lg">
+        <h1 className="text-3xl font-bold mb-4">Audio Player</h1>
+        <input type="file" accept="audio/*" onChange={handleFileChange} className="mb-4" />
+        <div className="playlist-container bg-gray-100 p-4 rounded-lg mb-4">
+          <h2 className="text-xl font-bold mb-2">Playlist</h2>
+          <ul>
+            {audioFiles.map(track => (
+              <li key={track.id} className="mb-2">
+                <button
+                  onClick={() => handlePlay(track)}
+                  className="block w-full py-2 px-4 text-left bg-gray-200 hover:bg-gray-300 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-gray-400"
+                >
+                  {track.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {currentTrack && (
+          <div className="now-playing-container bg-gray-100 p-4 rounded-lg">
+            <h2 className="text-xl font-bold mb-2">Now Playing</h2>
+            <audio
+              controls
+              ref={audioRef}
+              src={currentTrack.dataUrl}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleTrackEnd}
+              autoPlay={isPlaying}
+              currentTime={currentTime}
+              className="w-full"
+            >
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        )}
       </div>
-      <div className="mb-4">
-        <label className="block mb-2">Include Uppercase Letters:</label>
-        <input type="checkbox" checked={useUppercase} onChange={e => setUseUppercase(e.target.checked)} className="mr-2 leading-tight" />
-      </div>
-      <div className="mb-4">
-        <label className="block mb-2">Include Lowercase Letters:</label>
-        <input type="checkbox" checked={useLowercase} onChange={e => setUseLowercase(e.target.checked)} className="mr-2 leading-tight" />
-      </div>
-      <div className="mb-4">
-        <label className="block mb-2">Include Digits:</label>
-        <input type="checkbox" checked={useDigits} onChange={e => setUseDigits(e.target.checked)} className="mr-2 leading-tight" />
-      </div>
-      <div className="mb-4">
-        <label className="block mb-2">Include Special Symbols:</label>
-        <input type="checkbox" checked={useSpecial} onChange={e => setUseSpecial(e.target.checked)} className="mr-2 leading-tight" />
-      </div>
-      <button onClick={handleGeneratePassword} className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded focus:outline-none focus:shadow-outline">Generate Password</button>
-      <button onClick={handleCopyPassword} disabled={!password} className="bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded ml-2 focus:outline-none focus:shadow-outline" style={{ cursor: !password ? 'not-allowed' : 'pointer' }}>Copy Password</button>
-      {error && <div className="text-red-500 mt-4">{error}</div>}
-      {password && <div className="mt-4 text-center"><strong>Your Password:</strong> {password}</div>}
     </div>
   );
-}
+};
 
-export default PasswordGenerator;
+export default AudioPlayer;
